@@ -1,0 +1,38 @@
+# Posts every new Capitalia release to the Discord #announcements channel
+name: Discord announcement
+on:
+  release:
+    types: [published]
+  workflow_dispatch:   # "Run workflow" posts the latest release again (for testing)
+
+jobs:
+  announce:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post to Discord
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          NAME: ${{ github.event.release.name }}
+          TAG: ${{ github.event.release.tag_name }}
+          BODY: ${{ github.event.release.body }}
+          URL: ${{ github.event.release.html_url }}
+        run: |
+          if [ -z "$TAG" ]; then
+            R=$(curl -sSf "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/latest")
+            NAME=$(echo "$R" | jq -r '.name'); TAG=$(echo "$R" | jq -r '.tag_name')
+            BODY=$(echo "$R" | jq -r '.body // ""'); URL=$(echo "$R" | jq -r '.html_url')
+          fi
+          [ -n "$NAME" ] && [ "$NAME" != "null" ] || NAME="Capitalia $TAG"
+          [ -n "$BODY" ] && [ "$BODY" != "null" ] || BODY="Bug fixes and improvements."
+          jq -n --arg name "$NAME" --arg body "$BODY" --arg url "$URL" '{
+            username: "Capitalia",
+            embeds: [{
+              title: ("🎲 " + $name + " is out"),
+              url: $url,
+              color: 13939822,
+              description: (($body | .[0:3500]) +
+                "\n\n**Already playing?** Open Capitalia and press **Update now**." +
+                "\n**New here?** [Download for Windows](https://github.com/zelinskiy258-lgtm/capitalia-releases/releases/latest)")
+            }]
+          }' > payload.json
+          curl -sSf -H "Content-Type: application/json" -d @payload.json "$WEBHOOK"
